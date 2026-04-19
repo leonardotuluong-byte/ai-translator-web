@@ -4,158 +4,147 @@ import srt
 import io
 import time
 
-# --- CẤU HÌNH TRANG ---
-st.set_page_config(page_title="Gemini Global Translator Pro", layout="wide")
+# --- CẤU HÌNH GIAO DIỆN ---
+st.set_page_config(page_title="Gemini 2.5 Flash Web", layout="wide")
 
-# --- CSS ĐỂ GIAO DIỆN GIỐNG BẢN DESKTOP ---
 st.markdown("""
     <style>
-    .main { background-color: #0e1117; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; }
-    .stTextArea>div>div>textarea { font-family: 'Arial'; font-size: 14px; }
-    .log-box { 
-        background-color: #1e1e1e; 
-        color: #00ff00; 
-        padding: 10px; 
-        border-radius: 5px; 
-        height: 300px; 
-        overflow-y: auto; 
+    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; height: 3em; }
+    .log-container {
+        background-color: #111;
+        color: #0f0;
+        padding: 15px;
+        border-radius: 5px;
+        height: 350px;
+        overflow-y: auto;
         font-family: 'Courier New', monospace;
-        font-size: 13px;
-        white-space: pre-wrap;
+        border: 1px solid #333;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- KHỞI TẠO SESSION STATE CHO NHẬT KÝ ---
-if "log_content" not in st.session_state:
-    st.session_state.log_content = "--- Hệ thống sẵn sàng ---"
+# --- KHỞI TẠO TRẠNG THÁI ---
+if "logs" not in st.session_state:
+    st.session_state.logs = []
 
-def log(text):
-    st.session_state.log_content += f"\n{text}"
+def add_log(message):
+    st.session_state.logs.append(message)
 
-# --- HÀM DỊCH THEO CỤM (BATCH) TỐI ƯU SỐ THỨ TỰ ---
-def translate_batch(model, batch_data, target_lang):
-    """
-    batch_data: list of tuples (original_index, content)
-    """
-    # Tạo nội dung gửi cho AI với chỉ số rõ ràng [#ID]
-    batch_text = "\n".join([f"[#{i}] {content}" for i, content in batch_data])
-    
-    prompt = (f"Bạn là chuyên gia dịch thuật phim bản địa. Hãy dịch các câu thoại sau sang {target_lang}.\n"
-              f"QUY TẮC BẮT BUỘC:\n"
-              f"1. Trả về đúng định dạng '[#ID] nội dung dịch'.\n"
-              f"2. Giữ nguyên chỉ số ID trong ngoặc vuông, không được thay đổi hoặc bỏ sót câu nào.\n"
-              f"3. Dịch mượt mà, bản địa hóa tên nhân vật (Mèo Orange, Long Ma, v.v.).\n"
-              f"4. Không giải thích gì thêm.\n\n"
-              f"DỮ LIỆU:\n{batch_text}")
-    
-    try:
-        response = model.generate_content(prompt)
-        results = {}
-        if response.text:
-            lines = response.text.strip().split('\n')
-            for line in lines:
-                if '[#' in line and ']' in line:
-                    try:
-                        # Tách ID và nội dung: [#1] Hello -> ID=1, Content=Hello
-                        parts = line.split(']', 1)
-                        idx = int(parts[0].replace('[#', '').strip())
-                        content = parts[1].strip()
-                        results[idx] = content
-                    except: continue
-        return results
-    except Exception as e:
-        return {}
+# --- GIAO DIỆN ---
+st.markdown("<h2 style='text-align: center;'>HỆ THỐNG DỊCH THUẬT TOÀN CẦU 2.5 FLASH</h2>", unsafe_allow_html=True)
 
-# --- GIAO DIỆN CHÍNH ---
-st.title("🚀 HỆ THỐNG DỊCH THUẬT TOÀN CẦU 2.5 FLASH")
+# Input API Key và Model
+col_k, col_m = st.columns([3, 1])
+with col_k:
+    api_key = st.text_input("Dán Gemini API Key vào đây...", type="password")
+with col_m:
+    # Để đúng model name bạn yêu cầu
+    model_name = st.text_input("Model ID:", value="gemini-2.5-flash")
 
-col_key, col_model = st.columns([3, 1])
-with col_key:
-    api_key = st.text_input("Dán Gemini API Key vào đây:", type="password", placeholder="AIza...")
-with col_model:
-    model_choice = st.selectbox("Chọn dòng AI:", ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"])
-
+# Input Text
 input_text = st.text_area("Dán văn bản hoặc nội dung SRT vào đây:", height=200)
 
-col1, col2, col3 = st.columns([1, 1, 1])
+# Điều khiển
+col1, col2, col3, col4 = st.columns([1.5, 1, 1.5, 1])
+
 with col1:
-    languages = ["Tiếng Việt", "English", "Chinese (Simplified)", "Japanese", "Korean", "Thai", "French", "German"]
-    target_lang = st.selectbox("Ngôn ngữ đích:", languages)
+    languages = ["Tiếng Việt", "English", "Chinese (Simplified)", "Japanese", "Korean", "Thai", "French"]
+    target_lang = st.selectbox("Chọn ngôn ngữ:", languages)
 
 with col2:
     btn_translate_text = st.button("✨ Dịch đoạn trên", type="primary")
 
 with col3:
-    uploaded_files = st.file_uploader("📁 Chọn nhiều file SRT", type=["srt"], accept_multiple_files=True)
+    uploaded_files = st.file_uploader("📁 Chọn file SRT", type=["srt"], accept_multiple_files=True, label_visibility="collapsed")
+
+with col4:
     btn_run_files = st.button("🚀 Dịch hàng loạt", help="Dịch các file đã upload")
 
-# --- KHU VỰC HIỂN THỊ LOG ---
-st.subheader("Nhật ký xử lý:")
+# Nhật ký xử lý
+st.write("Nhật ký xử lý:")
 log_placeholder = st.empty()
-log_placeholder.markdown(f'<div class="log-box">{st.session_state.log_content}</div>', unsafe_allow_html=True)
+
+def update_log_ui():
+    log_html = f"<div class='log-container'>{'<br>'.join(st.session_state.logs)}</div>"
+    log_placeholder.markdown(log_html, unsafe_allow_html=True)
+
+update_log_ui()
 
 # --- XỬ LÝ LOGIC ---
 if api_key:
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(model_choice)
+    try:
+        model = genai.GenerativeModel(model_name)
+    except Exception as e:
+        add_log(f"❌ Lỗi khởi tạo Model: {e}")
 
-    # 1. DỊCH VĂN BẢN TRỰC TIẾP
+    # 1. DỊCH TRỰC TIẾP TRÊN TEXTBOX
     if btn_translate_text and input_text:
-        log(f"⏳ Đang dịch đoạn văn sang {target_lang}...")
-        instruct = f"Bạn là chuyên gia dịch thuật phim. Hãy dịch sang {target_lang}. Giữ nguyên định dạng nếu là SRT."
+        add_log(f"⏳ Đang dịch sang {target_lang} bằng {model_name}...")
+        update_log_ui()
         try:
+            instruct = f"Bạn là chuyên gia dịch thuật phim bản địa. Hãy dịch nội dung sau sang {target_lang}."
+            if " --> " in input_text: instruct += " Giữ nguyên mốc thời gian SRT."
+            
             response = model.generate_content(f"{instruct}\n\n{input_text}")
-            st.text_area("KẾT QUẢ:", value=response.text, height=300)
-            log("✅ Đã dịch xong đoạn văn.")
+            st.text_area("KẾT QUẢ DỊCH:", value=response.text, height=300)
+            add_log("✅ Dịch văn bản thành công!")
         except Exception as e:
-            log(f"❌ Lỗi: {str(e)}")
+            add_log(f"❌ Lỗi: {str(e)}")
+        update_log_ui()
 
-    # 2. DỊCH FILE SRT HÀNG LOẠT
+    # 2. DỊCH FILE SRT (GIỮ ĐÚNG SỐ THỨ TỰ NHƯ BẢN CŨ)
     if btn_run_files and uploaded_files:
         for uploaded_file in uploaded_files:
             fname = uploaded_file.name
-            log(f"📦 Đang xử lý file: {fname}")
+            add_log(f"⏳ Bắt đầu dịch {fname}...")
+            update_log_ui()
             
             try:
-                # Đọc và parse SRT
                 content = uploaded_file.read().decode("utf-8")
                 subs = list(srt.parse(content))
-                total_subs = len(subs)
                 
-                # Chia batch 10 câu
                 batch_size = 10
-                progress_bar = st.progress(0)
-                
-                for i in range(0, total_subs, batch_size):
-                    batch_raw = subs[i : i + batch_size]
-                    # Đóng gói kèm index để AI không bị nhầm
-                    batch_data = [(idx, s.content) for idx, s in enumerate(batch_raw)]
+                for i in range(0, len(subs), batch_size):
+                    batch = subs[i:i+batch_size]
+                    # Format L{j} y hệt bản cũ của bạn
+                    batch_text = "\n".join([f"L{j}: {s.content}" for j, s in enumerate(batch)])
                     
-                    translated_map = translate_batch(model, batch_data, target_lang)
+                    prompt = (f"Bạn là chuyên gia dịch thuật phim. Hãy dịch các câu thoại sau sang {target_lang}.\n"
+                              f"QUY TẮC:\n"
+                              f"1. Chỉ trả về định dạng 'LX: nội dung'.\n"
+                              f"2. Không thêm văn bản thừa hay giải thích.\n"
+                              f"3. Dịch mượt mà, bản địa hóa tên nhân vật.\n"
+                              f"DỮ LIỆU CẦN DỊCH:\n{batch_text}")
                     
-                    # Gán ngược lại vào sub gốc dựa trên ID
-                    for local_idx, s in enumerate(batch_raw):
-                        if local_idx in translated_map:
-                            s.content = translated_map[local_idx]
+                    response = model.generate_content(prompt)
                     
-                    progress = min((i + batch_size) / total_subs, 1.0)
-                    progress_bar.progress(progress)
-                    time.sleep(0.5) # Tránh Rate Limit API
+                    if response.text:
+                        lines = response.text.strip().split('\n')
+                        for line in lines:
+                            if ': ' in line:
+                                try:
+                                    idx_part, text_part = line.split(': ', 1)
+                                    idx = int(idx_part.replace('L', '').strip())
+                                    if idx < len(batch):
+                                        batch[idx].content = text_part.strip()
+                                except: continue
+                    
+                    add_log(f"   > Đã xử lý {min(i+batch_size, len(subs))}/{len(subs)} dòng của {fname}")
+                    update_log_ui()
+                    time.sleep(0.5) # Tránh bị khóa API
 
-                # Xuất file kết quả
-                new_srt = srt.compose(subs)
+                # Xuất file
+                final_srt = srt.compose(subs)
                 st.download_button(
                     label=f"📥 Tải về: {fname}",
-                    data=new_srt,
+                    data=final_srt,
                     file_name=fname.replace(".srt", f"_{target_lang}.srt"),
                     mime="text/plain"
                 )
-                log(f"✅ Hoàn thành: {fname}")
-                
-            except Exception as e:
-                log(f"❌ Lỗi tại file {fname}: {str(e)}")
+                add_log(f"✅ HOÀN THÀNH: {fname}")
+                update_log_ui()
 
-# Cập nhật log box cuối cùng
-log_placeholder.markdown(f'<div class="log-box">{st.session_state.log_content}</div>', unsafe_allow_html=True)
+            except Exception as e:
+                add_log(f"❌ LỖI tại {fname}: {str(e)}")
+                update_log_ui()

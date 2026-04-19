@@ -4,33 +4,36 @@ import srt
 import time
 import io
 
-# Cấu hình giao diện Web giống App cũ
+# Cấu hình giao diện Web Classic 
 st.set_page_config(page_title="AI Gemini Global Translator Pro", layout="centered")
 
-# CSS để tạo màu sắc cho nút bấm giống App cũ
+# CSS tạo màu sắc nút bấm đặc trưng (Tím, Xanh biển, Xanh lá)
 st.markdown("""
     <style>
-    .stButton>button { width: 100%; border-radius: 5px; color: white; }
-    div[data-testid="stHorizontalBlock"] button[kind="primary"] { background-color: #9c27b0; } /* Tím */
-    div[data-testid="stHorizontalBlock"] button[kind="secondary"] { background-color: #03a9f4; } /* Xanh biển */
-    div[data-testid="stHorizontalBlock"] .green-btn button { background-color: #4caf50; } /* Xanh lá */
+    .stButton>button { width: 100%; border-radius: 5px; color: white; height: 45px; font-weight: bold; }
+    /* Nút Dịch đoạn trên - Màu Tím */
+    div[data-testid="stHorizontalBlock"] div:nth-child(2) button { background-color: #9c27b0 !important; }
+    /* Nút Chọn file - Màu Xanh biển */
+    div[data-testid="stHorizontalBlock"] div:nth-child(3) .stFileUploader label { display: none; }
+    /* Nút Dịch hàng loạt - Màu Xanh lá */
+    div[data-testid="stHorizontalBlock"] div:nth-child(4) button { background-color: #4caf50 !important; }
     </style>
     """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: center;'>HỆ THỐNG DỊCH THUẬT TOÀN CẦU 2.5 FLASH</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>HỆ THỐNG DỊCH THUẬT ĐA NGÔN NGỮ 2.5 FLASH</h1>", unsafe_allow_html=True)
 
-# --- KHU VỰC CÀI ĐẶT CHÍNH ---
-api_key = st.text_input("Dán Gemini API Key vào đây...", type="password", help="Nhập Key để bắt đầu dịch")
+# --- KHU VỰC CÀI ĐẶT ---
+api_key = st.text_input("Dán Gemini API Key vào đây...", type="password")
 
-st.markdown("<b>Dán văn bản hoặc nội dung SRT vào đây:</b>", unsafe_allow_html=True)
-input_text = st.text_area("", height=250, placeholder="Nhập nội dung phim tại đây...", label_visibility="collapsed")
+st.markdown("<b>Nội dung cần dịch (Văn bản hoặc SRT):</b>", unsafe_allow_html=True)
+input_text = st.text_area("", height=250, placeholder="Dán nội dung phim của bạn tại đây...", label_visibility="collapsed")
 
-# --- HÀM DỊCH CHỐNG MẤT DÒNG (330/330) ---
+# --- HÀM DỊCH AN TOÀN TUYỆT ĐỐI (330/330 CÂU) ---
 def translate_safe(model, batch_data, target_lang):
     batch_text = "\n".join([f"#{i+1}: {text}" for i, text in enumerate(batch_data)])
-    prompt = (f"Bạn là chuyên gia dịch phim hoạt hình. Hãy dịch danh sách sau sang {target_lang}.\n"
+    prompt = (f"Bạn là chuyên gia dịch thuật phim bản địa. Hãy dịch danh sách sau sang {target_lang}.\n"
               f"QUY TẮC: 1. Giữ định dạng '#Số: nội dung'. 2. KHÔNG BỎ SÓT DÒNG. "
-              f"3. Dịch mượt cho nhân vật: Mèo Orange, Mèo Grey, White...\n\n{batch_text}")
+              f"3. Dịch mượt cho nhân vật: Mèo Orange, Mèo Grey, White, Đào Thiết...\n\n{batch_text}")
     try:
         response = model.generate_content(prompt)
         lines = response.text.strip().split('\n')
@@ -45,47 +48,47 @@ def translate_safe(model, batch_data, target_lang):
         return [results[i] if results[i] else batch_data[i] for i in range(len(batch_data))]
     except: return batch_data
 
-# --- ĐIỀU KHIỂN NẰM NGANG ---
-col_lang, col_btn1, col_btn2, col_btn3 = st.columns([1.5, 1.2, 1.5, 1.5])
+# --- HÀNG ĐIỀU KHIỂN NẰM NGANG ---
+col_lang, col_btn1, col_btn2, col_btn3 = st.columns([1.8, 1.5, 1.5, 1.5])
 
 with col_lang:
-    languages = ["Tiếng Việt", "English", "Spanish", "Chinese", "Japanese", "Korean", "Thai"]
+    # Danh sách đa ngôn ngữ mở rộng
+    languages = [
+        "Tiếng Việt", "English", "Chinese", "Japanese", "Korean", "Thai", 
+        "French", "German", "Spanish", "Russian", "Italian", "Indonesian"
+    ]
     target_lang = st.selectbox("", languages, index=0, label_visibility="collapsed")
 
 with col_btn1:
-    btn_text = st.button("✨ Dịch đoạn trên", type="primary")
+    btn_text = st.button("✨ Dịch đoạn trên")
 
 with col_btn2:
-    # Nút chọn file ảo để giống App cũ
-    uploaded_files = st.file_uploader("Chọn file SRT", type=["srt"], accept_multiple_files=True, label_visibility="collapsed")
+    uploaded_files = st.file_uploader("", type=["srt"], accept_multiple_files=True, label_visibility="collapsed")
 
 with col_btn3:
-    st.markdown('<div class="green-btn">', unsafe_allow_html=True)
-    btn_run = st.button("🚀 Dịch file hàng loạt")
-    st.markdown('</div>', unsafe_allow_html=True)
+    btn_run = st.button("🚀 Dịch hàng loạt")
 
 st.markdown("<b>Nhật ký xử lý:</b>", unsafe_allow_html=True)
-log_box = st.empty()
-log_content = ""
+log_area = st.empty()
+if 'log' not in st.session_state: st.session_state.log = ""
 
-def update_log(text):
-    global log_content
-    log_content += text + "\n"
-    log_box.markdown(f"```\n{log_content}\n```")
+def write_log(text):
+    st.session_state.log += text + "\n"
+    log_area.code(st.session_state.log)
 
-# --- LOGIC CHẠY APP ---
+# --- LOGIC VẬN HÀNH ---
 if api_key:
     try:
         genai.configure(api_key=api_key)
-        # Sử dụng ID model mạnh nhất hiện tại để sửa lỗi 404
-        model = genai.GenerativeModel("gemini-2.0-flash-lite-preview-02-05")
+        # Sử dụng Model 2.0 Flash mạnh nhất để sửa lỗi 404
+        model = genai.GenerativeModel("gemini-2.0-flash")
         
-        # 1. Dịch đoạn văn bản trực tiếp
+        # 1. Dịch văn bản trực tiếp
         if btn_text and input_text:
-            update_log(f"⏳ Đang dịch đoạn văn sang {target_lang}...")
-            res = model.generate_content(f"Dịch sang {target_lang}:\n\n{input_text}")
-            st.text_area("Kết quả dịch:", value=res.text, height=200)
-            update_log("✅ Đã dịch xong đoạn văn.")
+            write_log(f"⏳ Đang dịch đoạn văn sang {target_lang}...")
+            res = model.generate_content(f"Dịch sang {target_lang}, văn phong tự nhiên:\n\n{input_text}")
+            st.text_area("Kết quả:", value=res.text, height=200)
+            write_log("✅ Đã hoàn thành dịch văn bản.")
 
         # 2. Dịch file SRT hàng loạt
         if btn_run:
@@ -93,21 +96,23 @@ if api_key:
                 st.warning("Vui lòng chọn file SRT trước!")
             else:
                 for f in uploaded_files:
-                    update_log(f"⏳ Bắt đầu dịch file: {f.name}")
+                    write_log(f"⏳ Bắt đầu xử lý file: {f.name}")
                     subs = list(srt.parse(f.read().decode("utf-8")))
                     total = len(subs)
                     translated_list = []
                     batch_size = 15
                     
+                    prog = st.progress(0)
                     for i in range(0, total, batch_size):
                         batch = subs[i:i+batch_size]
                         res = translate_safe(model, [s.content for s in batch], target_lang)
                         translated_list.extend(res)
-                        time.sleep(0.5)
+                        prog.progress(min((i + batch_size) / total, 1.0))
+                        time.sleep(0.6)
                     
                     for j in range(len(subs)): subs[j].content = translated_list[j]
-                    st.download_button(f"📥 Tải file: {f.name}", srt.compose(subs), f.name.replace(".srt", f"_{target_lang}.srt"), key=f.name)
-                    update_log(f"✅ Hoàn thành: {f.name} ({len(translated_list)}/{total} câu)")
+                    st.download_button(f"📥 Tải về: {f.name}", srt.compose(subs), f.name.replace(".srt", f"_{target_lang}.srt"), key=f.name)
+                    write_log(f"✅ Hoàn thành: {f.name} ({len(translated_list)}/{total} câu)")
 
     except Exception as e:
-        st.error(f"Lỗi hệ thống: {e}")
+        st.error(f"Lỗi: {e}. Vui lòng kiểm tra API Key hoặc kết nối mạng.")

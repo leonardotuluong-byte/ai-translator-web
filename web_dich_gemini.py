@@ -5,32 +5,28 @@ import time
 import re
 
 # --- CẤU HÌNH GIAO DIỆN ---
-st.set_page_config(page_title="Gemini 2.5 Global Native", layout="wide")
+st.set_page_config(page_title="Gemini 2.5 Global Native - Fix 100%", layout="wide")
 
 st.markdown("""
     <style>
-    /* Nền toàn trang */
     .stApp { background-color: #0e1117; }
     
-    /* Chỉnh khung nhập liệu: Nền TRẮNG, Chữ ĐEN */
+    /* Khung nhập liệu và khung kết quả: Nền TRẮNG, Chữ ĐEN */
     .stTextArea textarea { 
         font-family: 'Consolas', monospace; 
         font-size: 16px !important; 
         color: #000000 !important; 
         background-color: #ffffff !important; 
-        line-height: 1.5;
     }
     
-    /* Các nút bấm */
     .stButton>button { 
         width: 100%; border-radius: 8px; font-weight: bold; height: 3.5em; 
-        background: linear-gradient(45deg, #00c853, #b2ff59); color: black; border: none; 
+        background: linear-gradient(45deg, #2979ff, #00e5ff); color: white; border: none; 
     }
     
-    /* Khung Nhật ký thực thi */
     .log-box { 
         background-color: #000; color: #00ff41; padding: 15px; border-radius: 8px; 
-        height: 350px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 13px; border: 1px solid #333;
+        height: 300px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 13px; border: 1px solid #333;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -42,13 +38,13 @@ LANGUAGES = [
 ]
 
 if "logs" not in st.session_state:
-    st.session_state.logs = ["--- Hệ thống sẵn sàng: Chế độ Bản địa hóa 100% ---"]
+    st.session_state.logs = ["--- Hệ thống sẵn sàng (Đã nâng cấp lệnh dịch cưỡng chế) ---"]
 
 def write_log(text):
     st.session_state.logs.append(text)
 
 # --- GIAO DIỆN CHÍNH ---
-st.markdown("<h2 style='text-align: center; color: #b2ff59;'>AI GLOBAL TRANSLATOR 2.5 FLASH - NATIVE STYLE</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center; color: #00e5ff;'>AI GLOBAL TRANSLATOR 2.5 FLASH - CHẾ ĐỘ DỊCH TRIỆT ĐỂ</h2>", unsafe_allow_html=True)
 
 col_k, col_m = st.columns([3, 1])
 with col_k:
@@ -56,12 +52,11 @@ with col_k:
 with col_m:
     model_id = st.text_input("Model ID:", value="gemini-2.5-flash")
 
-# Khung nhập liệu (Bây giờ đã hiện chữ đen trên nền trắng)
-input_text = st.text_area("Nội dung SRT gốc (Dán vào đây để hiện chữ đen):", height=250)
+input_text = st.text_area("Nội dung gốc (Dán SRT vào đây):", height=250)
 
 col_l, col_b1, col_up, col_b2 = st.columns([1.5, 1, 1.5, 1])
 with col_l:
-    target_lang = st.selectbox("Ngôn ngữ đích (Target):", LANGUAGES, index=0)
+    target_lang = st.selectbox("Ngôn ngữ đích (Target Language):", LANGUAGES, index=0)
 with col_b1:
     btn_translate_text = st.button("✨ Dịch mượt Review")
 with col_up:
@@ -78,40 +73,43 @@ def refresh_logs():
 
 refresh_logs()
 
-# --- SIÊU PROMPT DỊCH ĐỊA PHƯƠNG ---
-def get_universal_native_prompt(content, lang):
+# --- PROMPT "CƯỠNG CHẾ" CỰC MẠNH ---
+def get_ultimate_native_prompt(content, lang):
     return (
-        f"Bạn là một biên dịch viên bản xứ chuyên nghiệp tại quốc gia sử dụng {lang}, chuyên về lĩnh vực Review phim.\n"
-        f"Nhiệm vụ: Dịch TOÀN BỘ nội dung sau sang {lang} theo phong cách bản địa hóa 100%.\n\n"
-        f"CÁC QUY TẮC BẮT BUỘC:\n"
-        f"1. DỊCH CƯỠNG CHẾ 100%: Dịch tất cả mọi thứ (tiếng Trung, Anh, v.v.). KHÔNG giữ lại chữ gốc.\n"
-        f"2. BẢN ĐỊA HÓA TÊN RIÊNG: Chuyển đổi tên riêng sang cách gọi tự nhiên nhất của {lang}. \n"
-        f"   - Tiếng Việt: Dùng âm Hán Việt (Thao Thiết, Long Mẫu...).\n"
-        f"   - Nhật/Hàn: Dùng Katakana/Hangul.\n"
-        f"3. PHONG CÁCH REVIEW: Ngắn gọn, súc tích, kể chuyện lôi cuốn.\n"
-        f"4. ĐỊNH DẠNG: Chỉ trả về 'LX: nội dung dịch'. Không giải thích.\n\n"
+        f"Bạn là một dịch giả chuyên nghiệp xuất sắc nhất thế giới về bản địa hóa phim.\n"
+        f"Nhiệm vụ: DỊCH TOÀN BỘ 100% nội dung sau sang {lang}. KHÔNG ĐƯỢC để lại bất kỳ chữ tiếng Trung nào.\n\n"
+        f"YÊU CẦU BẮT BUỘC:\n"
+        f"1. DỊCH TRIỆT ĐỂ: Thay thế toàn bộ tiếng Trung bằng {lang}. Đối với các tên riêng tiếng Trung, hãy dùng âm Hán Việt (nếu là Tiếng Việt) hoặc phiên âm chuẩn (nếu là ngôn ngữ khác).\n"
+        f"2. PHONG CÁCH REVIEW: Dịch ngắn gọn, đúng trọng tâm, phong cách review kể chuyện lôi cuốn. Không dịch dài dòng.\n"
+        f"3. GIỮ NGUYÊN MÃ SỐ: Trả về đúng định dạng 'LX: nội dung dịch'. Tuyệt đối không thêm lời giải thích.\n"
+        f"4. TUYỆT ĐỐI KHÔNG GIỮ NGUYÊN BẢN GỐC.\n\n"
         f"DỮ LIỆU CẦN DỊCH:\n{content}"
     )
 
-# --- HÀM XỬ LÝ SRT ---
-def process_srt_global(model, srt_content, lang):
+# --- HÀM XỬ LÝ CHÍNH ---
+def process_srt_strict(model, srt_content, lang):
     try:
         subs = list(srt.parse(srt_content))
-        batch_size = 12
+        batch_size = 10 # Giảm batch để AI tập trung dịch kỹ hơn
         for i in range(0, len(subs), batch_size):
             batch = subs[i : i + batch_size]
             batch_text = "\n".join([f"L{j}: {s.content}" for j, s in enumerate(batch)])
             
-            response = model.generate_content(get_universal_native_prompt(batch_text, lang))
+            # Gửi yêu cầu dịch
+            response = model.generate_content(get_ultimate_native_prompt(batch_text, lang))
+            
             if response.text:
                 lines = response.text.strip().split('\n')
                 for line in lines:
                     match = re.search(r"L(\d+):\s*(.*)", line)
                     if match:
-                        idx = int(match.group(1))
-                        if idx < len(batch):
-                            batch[idx].content = match.group(2).strip()
-            time.sleep(0.4)
+                        try:
+                            idx = int(match.group(1))
+                            if idx < len(batch):
+                                batch[idx].content = match.group(2).strip()
+                        except: continue
+            
+            time.sleep(0.5) # Tránh Rate Limit
         return srt.compose(subs)
     except Exception as e:
         return f"Lỗi xử lý: {str(e)}"
@@ -122,31 +120,31 @@ if api_key:
     model = genai.GenerativeModel(model_id)
 
     if btn_translate_text and input_text:
-        write_log(f"⏳ Đang dịch 100% sang {target_lang}...")
+        write_log(f"⏳ Đang cưỡng chế dịch 100% sang {target_lang}...")
         refresh_logs()
         if "-->" in input_text:
-            result = process_srt_global(model, input_text, target_lang)
-            st.text_area("KẾT QUẢ SRT (Bản địa hóa 100%):", value=result, height=350)
+            result = process_srt_strict(model, input_text, target_lang)
+            st.text_area("KẾT QUẢ SRT (100% NATIVE):", value=result, height=350)
         else:
             raw_lines = input_text.strip().split('\n')
             formatted = "\n".join([f"L{i}: {line}" for i, line in enumerate(raw_lines)])
-            response = model.generate_content(get_universal_native_prompt(formatted, target_lang))
+            response = model.generate_content(get_ultimate_native_prompt(formatted, target_lang))
             clean_res = re.sub(r"L\d+: ", "", response.text)
             st.text_area("KẾT QUẢ DỊCH:", value=clean_res, height=350)
-        write_log("✅ Hoàn thành.")
+        write_log("✅ Đã hoàn thành dịch triệt để.")
         refresh_logs()
 
     if btn_run_files and uploaded_files:
         for uploaded_file in uploaded_files:
             fname = uploaded_file.name
-            write_log(f"📦 Đang xử lý file: {fname}")
+            write_log(f"📦 Đang dịch file: {fname}")
             refresh_logs()
             try:
                 content = uploaded_file.read().decode("utf-8")
-                final_srt = process_srt_global(model, content, target_lang)
+                final_srt = process_srt_strict(model, content, target_lang)
                 st.download_button(label=f"📥 Tải về: {fname}", data=final_srt, file_name=fname.replace(".srt", f"_{target_lang}.srt"), key=fname)
-                write_log(f"✅ Đã xong file {fname}")
+                write_log(f"✅ Xong file {fname}")
                 refresh_logs()
             except Exception as e:
-                write_log(f"❌ Lỗi file {fname}: {str(e)}")
+                write_log(f"❌ Lỗi: {str(e)}")
                 refresh_logs()

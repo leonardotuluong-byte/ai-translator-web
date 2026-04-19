@@ -1,102 +1,161 @@
 import streamlit as st
 import google.generativeai as genai
 import srt
-import time
 import io
+import time
 
-# Cấu hình giao diện Classic
-st.set_page_config(page_title="AI Gemini Global Pro", layout="centered")
+# --- CẤU HÌNH TRANG ---
+st.set_page_config(page_title="Gemini Global Translator Pro", layout="wide")
 
-# CSS tạo màu sắc nút bấm đặc trưng (Tím, Xanh biển, Xanh lá)
+# --- CSS ĐỂ GIAO DIỆN GIỐNG BẢN DESKTOP ---
 st.markdown("""
     <style>
-    .stButton>button { width: 100%; border-radius: 5px; color: white; height: 45px; font-weight: bold; }
-    div[data-testid="stHorizontalBlock"] div:nth-child(2) button { background-color: #9c27b0 !important; }
-    div[data-testid="stHorizontalBlock"] div:nth-child(3) .stFileUploader label { display: none; }
-    div[data-testid="stHorizontalBlock"] div:nth-child(4) button { background-color: #4caf50 !important; }
+    .main { background-color: #0e1117; }
+    .stButton>button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; }
+    .stTextArea>div>div>textarea { font-family: 'Arial'; font-size: 14px; }
+    .log-box { 
+        background-color: #1e1e1e; 
+        color: #00ff00; 
+        padding: 10px; 
+        border-radius: 5px; 
+        height: 300px; 
+        overflow-y: auto; 
+        font-family: 'Courier New', monospace;
+        font-size: 13px;
+        white-space: pre-wrap;
+    }
     </style>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: center;'>HỆ THỐNG DỊCH THUẬT ĐA NGÔN NGỮ 2.5 FLASH</h1>", unsafe_allow_html=True)
+# --- KHỞI TẠO SESSION STATE CHO NHẬT KÝ ---
+if "log_content" not in st.session_state:
+    st.session_state.log_content = "--- Hệ thống sẵn sàng ---"
 
-# --- CÀI ĐẶT ---
-api_key = st.text_input("Dán Gemini API Key vào đây...", type="password")
+def log(text):
+    st.session_state.log_content += f"\n{text}"
 
-# Cho phép chọn Model để tránh lỗi 404
-model_choice = st.selectbox("Chọn dòng AI (Hãy thử dòng khác nếu bị lỗi 404):", 
-                            ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro"])
-
-st.markdown("<b>Nội dung cần dịch:</b>", unsafe_allow_html=True)
-input_text = st.text_area("", height=220, placeholder="Dán nội dung phim tại đây...", label_visibility="collapsed")
-
-# --- HÀM DỊCH CHỐNG MẤT DÒNG (330/330) ---
-def translate_safe(model, batch_data, target_lang):
-    batch_text = "\n".join([f"#{i+1}: {text}" for i, text in enumerate(batch_data)])
-    prompt = (f"Bạn là chuyên gia dịch thuật phim. Hãy dịch danh sách sau sang {target_lang}.\n"
-              f"QUY TẮC: 1. Giữ định dạng '#Số: nội dung'. 2. KHÔNG BỎ SÓT DÒNG. "
-              f"3. Dịch mượt cho nhân vật: Mèo Orange, Mèo Grey, White...\n\n{batch_text}")
+# --- HÀM DỊCH THEO CỤM (BATCH) TỐI ƯU SỐ THỨ TỰ ---
+def translate_batch(model, batch_data, target_lang):
+    """
+    batch_data: list of tuples (original_index, content)
+    """
+    # Tạo nội dung gửi cho AI với chỉ số rõ ràng [#ID]
+    batch_text = "\n".join([f"[#{i}] {content}" for i, content in batch_data])
+    
+    prompt = (f"Bạn là chuyên gia dịch thuật phim bản địa. Hãy dịch các câu thoại sau sang {target_lang}.\n"
+              f"QUY TẮC BẮT BUỘC:\n"
+              f"1. Trả về đúng định dạng '[#ID] nội dung dịch'.\n"
+              f"2. Giữ nguyên chỉ số ID trong ngoặc vuông, không được thay đổi hoặc bỏ sót câu nào.\n"
+              f"3. Dịch mượt mà, bản địa hóa tên nhân vật (Mèo Orange, Long Ma, v.v.).\n"
+              f"4. Không giải thích gì thêm.\n\n"
+              f"DỮ LIỆU:\n{batch_text}")
+    
     try:
         response = model.generate_content(prompt)
-        lines = response.text.strip().split('\n')
-        results = [None] * len(batch_data)
-        for line in lines:
-            if ": " in line and line.startswith("#"):
-                try:
-                    p = line.split(": ", 1)
-                    idx = int(p[0].replace("#", "")) - 1
-                    if 0 <= idx < len(batch_data): results[idx] = p[1].strip()
-                except: continue
-        return [results[i] if results[i] else batch_data[i] for i in range(len(batch_data))]
-    except: return batch_data
+        results = {}
+        if response.text:
+            lines = response.text.strip().split('\n')
+            for line in lines:
+                if '[#' in line and ']' in line:
+                    try:
+                        # Tách ID và nội dung: [#1] Hello -> ID=1, Content=Hello
+                        parts = line.split(']', 1)
+                        idx = int(parts[0].replace('[#', '').strip())
+                        content = parts[1].strip()
+                        results[idx] = content
+                    except: continue
+        return results
+    except Exception as e:
+        return {}
 
-# --- HÀNG ĐIỀU KHIỂN ---
-col_lang, col_btn1, col_btn2, col_btn3 = st.columns([1.8, 1.5, 1.5, 1.5])
-with col_lang:
-    languages = ["Tiếng Việt", "English", "Chinese", "Japanese", "Korean", "Thai", "French"]
-    target_lang = st.selectbox("", languages, index=0, label_visibility="collapsed")
-with col_btn1:
-    btn_text = st.button("✨ Dịch đoạn trên")
-with col_btn2:
-    uploaded_files = st.file_uploader("", type=["srt"], accept_multiple_files=True, label_visibility="collapsed")
-with col_btn3:
-    btn_run = st.button("🚀 Dịch hàng loạt")
+# --- GIAO DIỆN CHÍNH ---
+st.title("🚀 HỆ THỐNG DỊCH THUẬT TOÀN CẦU 2.5 FLASH")
 
-st.markdown("<b>Nhật ký xử lý:</b>", unsafe_allow_html=True)
-log_area = st.empty()
-if 'log' not in st.session_state: st.session_state.log = ""
+col_key, col_model = st.columns([3, 1])
+with col_key:
+    api_key = st.text_input("Dán Gemini API Key vào đây:", type="password", placeholder="AIza...")
+with col_model:
+    model_choice = st.selectbox("Chọn dòng AI:", ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"])
 
-def write_log(text):
-    st.session_state.log += text + "\n"
-    log_area.code(st.session_state.log)
+input_text = st.text_area("Dán văn bản hoặc nội dung SRT vào đây:", height=200)
 
-# --- VẬN HÀNH ---
+col1, col2, col3 = st.columns([1, 1, 1])
+with col1:
+    languages = ["Tiếng Việt", "English", "Chinese (Simplified)", "Japanese", "Korean", "Thai", "French", "German"]
+    target_lang = st.selectbox("Ngôn ngữ đích:", languages)
+
+with col2:
+    btn_translate_text = st.button("✨ Dịch đoạn trên", type="primary")
+
+with col3:
+    uploaded_files = st.file_uploader("📁 Chọn nhiều file SRT", type=["srt"], accept_multiple_files=True)
+    btn_run_files = st.button("🚀 Dịch hàng loạt", help="Dịch các file đã upload")
+
+# --- KHU VỰC HIỂN THỊ LOG ---
+st.subheader("Nhật ký xử lý:")
+log_placeholder = st.empty()
+log_placeholder.markdown(f'<div class="log-box">{st.session_state.log_content}</div>', unsafe_allow_html=True)
+
+# --- XỬ LÝ LOGIC ---
 if api_key:
-    try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_choice)
-        
-        if btn_text and input_text:
-            res = model.generate_content(f"Dịch sang {target_lang}:\n\n{input_text}")
-            st.text_area("Kết quả:", value=res.text, height=200)
-            write_log("✅ Đã dịch xong đoạn văn.")
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(model_choice)
 
-        if btn_run:
-            if not uploaded_files: st.warning("Chọn file SRT!")
-            else:
-                for f in uploaded_files:
-                    write_log(f"⏳ Đang xử lý: {f.name}")
-                    subs = list(srt.parse(f.read().decode("utf-8")))
-                    total = len(subs)
-                    translated_list = []
-                    batch_size = 15
-                    prog = st.progress(0)
-                    for i in range(0, total, batch_size):
-                        batch = subs[i:i+batch_size]
-                        res = translate_safe(model, [s.content for s in batch], target_lang)
-                        translated_list.extend(res)
-                        prog.progress(min((i + batch_size) / total, 1.0))
-                        time.sleep(0.7)
-                    for j in range(len(subs)): subs[j].content = translated_list[j]
-                    st.download_button(f"📥 Tải: {f.name}", srt.compose(subs), f.name.replace(".srt", f"_{target_lang}.srt"), key=f.name)
-                    write_log(f"✅ Hoàn thành: {f.name} ({len(translated_list)}/{total} câu)")
-    except Exception as e: st.error(f"Lỗi: {e}")
+    # 1. DỊCH VĂN BẢN TRỰC TIẾP
+    if btn_translate_text and input_text:
+        log(f"⏳ Đang dịch đoạn văn sang {target_lang}...")
+        instruct = f"Bạn là chuyên gia dịch thuật phim. Hãy dịch sang {target_lang}. Giữ nguyên định dạng nếu là SRT."
+        try:
+            response = model.generate_content(f"{instruct}\n\n{input_text}")
+            st.text_area("KẾT QUẢ:", value=response.text, height=300)
+            log("✅ Đã dịch xong đoạn văn.")
+        except Exception as e:
+            log(f"❌ Lỗi: {str(e)}")
+
+    # 2. DỊCH FILE SRT HÀNG LOẠT
+    if btn_run_files and uploaded_files:
+        for uploaded_file in uploaded_files:
+            fname = uploaded_file.name
+            log(f"📦 Đang xử lý file: {fname}")
+            
+            try:
+                # Đọc và parse SRT
+                content = uploaded_file.read().decode("utf-8")
+                subs = list(srt.parse(content))
+                total_subs = len(subs)
+                
+                # Chia batch 10 câu
+                batch_size = 10
+                progress_bar = st.progress(0)
+                
+                for i in range(0, total_subs, batch_size):
+                    batch_raw = subs[i : i + batch_size]
+                    # Đóng gói kèm index để AI không bị nhầm
+                    batch_data = [(idx, s.content) for idx, s in enumerate(batch_raw)]
+                    
+                    translated_map = translate_batch(model, batch_data, target_lang)
+                    
+                    # Gán ngược lại vào sub gốc dựa trên ID
+                    for local_idx, s in enumerate(batch_raw):
+                        if local_idx in translated_map:
+                            s.content = translated_map[local_idx]
+                    
+                    progress = min((i + batch_size) / total_subs, 1.0)
+                    progress_bar.progress(progress)
+                    time.sleep(0.5) # Tránh Rate Limit API
+
+                # Xuất file kết quả
+                new_srt = srt.compose(subs)
+                st.download_button(
+                    label=f"📥 Tải về: {fname}",
+                    data=new_srt,
+                    file_name=fname.replace(".srt", f"_{target_lang}.srt"),
+                    mime="text/plain"
+                )
+                log(f"✅ Hoàn thành: {fname}")
+                
+            except Exception as e:
+                log(f"❌ Lỗi tại file {fname}: {str(e)}")
+
+# Cập nhật log box cuối cùng
+log_placeholder.markdown(f'<div class="log-box">{st.session_state.log_content}</div>', unsafe_allow_html=True)

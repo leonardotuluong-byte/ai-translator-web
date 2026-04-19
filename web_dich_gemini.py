@@ -9,17 +9,32 @@ st.set_page_config(page_title="Gemini 2.5 Global Native", layout="wide")
 
 st.markdown("""
     <style>
+    /* Nền toàn trang */
     .stApp { background-color: #0e1117; }
-    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; height: 3.5em; background: linear-gradient(45deg, #00c853, #b2ff59); color: black; border: none; }
+    
+    /* Chỉnh khung nhập liệu: Nền TRẮNG, Chữ ĐEN */
+    .stTextArea textarea { 
+        font-family: 'Consolas', monospace; 
+        font-size: 16px !important; 
+        color: #000000 !important; 
+        background-color: #ffffff !important; 
+        line-height: 1.5;
+    }
+    
+    /* Các nút bấm */
+    .stButton>button { 
+        width: 100%; border-radius: 8px; font-weight: bold; height: 3.5em; 
+        background: linear-gradient(45deg, #00c853, #b2ff59); color: black; border: none; 
+    }
+    
+    /* Khung Nhật ký thực thi */
     .log-box { 
         background-color: #000; color: #00ff41; padding: 15px; border-radius: 8px; 
         height: 350px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 13px; border: 1px solid #333;
     }
-    .stTextArea textarea { font-family: 'Consolas', monospace; font-size: 14px !important; color: #f0f0f0; }
     </style>
 """, unsafe_allow_html=True)
 
-# Danh sách đầy đủ ngôn ngữ
 LANGUAGES = [
     "Tiếng Việt", "English", "Japanese", "Korean", "Chinese (Traditional)", 
     "German", "French", "Spanish", "Thai", "Russian", "Portuguese", 
@@ -27,7 +42,7 @@ LANGUAGES = [
 ]
 
 if "logs" not in st.session_state:
-    st.session_state.logs = ["--- Hệ thống sẵn sàng: Chế độ Bản địa hóa Đa quốc gia 100% ---"]
+    st.session_state.logs = ["--- Hệ thống sẵn sàng: Chế độ Bản địa hóa 100% ---"]
 
 def write_log(text):
     st.session_state.logs.append(text)
@@ -41,11 +56,12 @@ with col_k:
 with col_m:
     model_id = st.text_input("Model ID:", value="gemini-2.5-flash")
 
-input_text = st.text_area("Nội dung SRT gốc (Dán nội dung vào đây):", height=200)
+# Khung nhập liệu (Bây giờ đã hiện chữ đen trên nền trắng)
+input_text = st.text_area("Nội dung SRT gốc (Dán vào đây để hiện chữ đen):", height=250)
 
 col_l, col_b1, col_up, col_b2 = st.columns([1.5, 1, 1.5, 1])
 with col_l:
-    target_lang = st.selectbox("Ngôn ngữ đích (Target Language):", LANGUAGES, index=0)
+    target_lang = st.selectbox("Ngôn ngữ đích (Target):", LANGUAGES, index=0)
 with col_b1:
     btn_translate_text = st.button("✨ Dịch mượt Review")
 with col_up:
@@ -62,19 +78,18 @@ def refresh_logs():
 
 refresh_logs()
 
-# --- PROMPT ĐA NĂNG CHO MỌI QUỐC GIA ---
+# --- SIÊU PROMPT DỊCH ĐỊA PHƯƠNG ---
 def get_universal_native_prompt(content, lang):
     return (
-        f"Bạn là một biên dịch viên bản xứ chuyên nghiệp tại quốc gia sử dụng {lang}, chuyên về lĩnh vực Review phim và kể chuyện.\n"
+        f"Bạn là một biên dịch viên bản xứ chuyên nghiệp tại quốc gia sử dụng {lang}, chuyên về lĩnh vực Review phim.\n"
         f"Nhiệm vụ: Dịch TOÀN BỘ nội dung sau sang {lang} theo phong cách bản địa hóa 100%.\n\n"
         f"CÁC QUY TẮC BẮT BUỘC:\n"
-        f"1. DỊCH CƯỠNG CHẾ 100%: Dịch tất cả mọi thứ, bao gồm cả tiếng Trung, tiếng Anh hay bất kỳ ngôn ngữ nào khác. Tuyệt đối KHÔNG giữ lại chữ gốc.\n"
-        f"2. BẢN ĐỊA HÓA TÊN RIÊNG: Chuyển đổi tên riêng/thuật ngữ sang cách gọi tự nhiên nhất của {lang}. \n"
-        f"   - Nếu là Tiếng Việt: Dùng âm Hán Việt (Sơn Hải Kinh, Thao Thiết, Long Mẫu...).\n"
-        f"   - Nếu là Nhật/Hàn: Dùng bảng chữ cái tương ứng (Katakana/Hangul) để phiên âm tên riêng.\n"
-        f"   - Nếu là Anh/Đức/Tây Ban Nha: Dùng cách gọi bản xứ phổ biến nhất.\n"
-        f"3. PHONG CÁCH REVIEW: Ngắn gọn, súc tích, có tính dẫn dắt kể chuyện. Không dịch dài dòng vô ích.\n"
-        f"4. ĐỊNH DẠNG: Chỉ trả về định dạng 'LX: nội dung dịch'. Không thêm lời giải thích hay bất kỳ ký tự nào khác.\n\n"
+        f"1. DỊCH CƯỠNG CHẾ 100%: Dịch tất cả mọi thứ (tiếng Trung, Anh, v.v.). KHÔNG giữ lại chữ gốc.\n"
+        f"2. BẢN ĐỊA HÓA TÊN RIÊNG: Chuyển đổi tên riêng sang cách gọi tự nhiên nhất của {lang}. \n"
+        f"   - Tiếng Việt: Dùng âm Hán Việt (Thao Thiết, Long Mẫu...).\n"
+        f"   - Nhật/Hàn: Dùng Katakana/Hangul.\n"
+        f"3. PHONG CÁCH REVIEW: Ngắn gọn, súc tích, kể chuyện lôi cuốn.\n"
+        f"4. ĐỊNH DẠNG: Chỉ trả về 'LX: nội dung dịch'. Không giải thích.\n\n"
         f"DỮ LIỆU CẦN DỊCH:\n{content}"
     )
 
@@ -82,7 +97,7 @@ def get_universal_native_prompt(content, lang):
 def process_srt_global(model, srt_content, lang):
     try:
         subs = list(srt.parse(srt_content))
-        batch_size = 12 # Giữ batch nhỏ để AI dịch chuẩn từng câu
+        batch_size = 12
         for i in range(0, len(subs), batch_size):
             batch = subs[i : i + batch_size]
             batch_text = "\n".join([f"L{j}: {s.content}" for j, s in enumerate(batch)])
@@ -95,7 +110,6 @@ def process_srt_global(model, srt_content, lang):
                     if match:
                         idx = int(match.group(1))
                         if idx < len(batch):
-                            # Giữ nguyên mốc thời gian, chỉ thay đổi nội dung thoại
                             batch[idx].content = match.group(2).strip()
             time.sleep(0.4)
         return srt.compose(subs)
@@ -107,7 +121,6 @@ if api_key:
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(model_id)
 
-    # Dịch textbox
     if btn_translate_text and input_text:
         write_log(f"⏳ Đang dịch 100% sang {target_lang}...")
         refresh_logs()
@@ -123,11 +136,10 @@ if api_key:
         write_log("✅ Hoàn thành.")
         refresh_logs()
 
-    # Dịch file
     if btn_run_files and uploaded_files:
         for uploaded_file in uploaded_files:
             fname = uploaded_file.name
-            write_log(f"📦 Đang xử lý file cho quốc gia {target_lang}: {fname}")
+            write_log(f"📦 Đang xử lý file: {fname}")
             refresh_logs()
             try:
                 content = uploaded_file.read().decode("utf-8")

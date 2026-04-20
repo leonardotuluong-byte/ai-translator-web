@@ -81,7 +81,7 @@ def get_ultimate_native_prompt(content, lang):
         f"YÊU CẦU BẮT BUỘC:\n"
         f"1. DỊCH TRIỆT ĐỂ: Thay thế toàn bộ tiếng Trung bằng {lang}. Đối với các tên riêng tiếng Trung, hãy dùng âm Hán Việt (nếu là Tiếng Việt) hoặc phiên âm chuẩn (nếu là ngôn ngữ khác).\n"
         f"2. PHONG CÁCH REVIEW: Dịch ngắn gọn, đúng trọng tâm, phong cách review kể chuyện lôi cuốn. Không dịch dài dòng.\n"
-        f"3. GIỮ NGUYÊN MÃ SỐ: Trả về đúng định dạng 'LX: nội dung dịch'. Tuyệt đối không thêm lời giải thích.\n"
+        f"3. GIỮ NGUYÊN MÃ SỐ: Trả về đúng định dạng 'L[X]: nội dung dịch'. Tuyệt đối không thêm lời giải thích.\n"
         f"4. TUYỆT ĐỐI KHÔNG GIỮ NGUYÊN BẢN GỐC.\n\n"
         f"DỮ LIỆU CẦN DỊCH:\n{content}"
     )
@@ -89,8 +89,13 @@ def get_ultimate_native_prompt(content, lang):
 # --- HÀM XỬ LÝ CHÍNH ---
 def process_srt_strict(model, srt_content, lang):
     try:
+        # SỬA LỖI Ở ĐÂY: Dọn dẹp ký tự thừa và BOM tàng hình trước khi phân tích
+        srt_content = srt_content.strip()
+        if srt_content.startswith('\ufeff'):
+            srt_content = srt_content[1:]
+            
         subs = list(srt.parse(srt_content))
-        batch_size = 10 # Giảm batch để AI tập trung dịch kỹ hơn
+        batch_size = 10 
         for i in range(0, len(subs), batch_size):
             batch = subs[i : i + batch_size]
             batch_text = "\n".join([f"L{j}: {s.content}" for j, s in enumerate(batch)])
@@ -112,7 +117,8 @@ def process_srt_strict(model, srt_content, lang):
             time.sleep(0.5) # Tránh Rate Limit
         return srt.compose(subs)
     except Exception as e:
-        return f"Lỗi xử lý: {str(e)}"
+        # Trả về lỗi chi tiết để không làm sập cả ứng dụng
+        return f"Lỗi xử lý file định dạng SRT: {str(e)}\nHãy chắc chắn file của bạn là chuẩn SRT."
 
 # --- THỰC THI ---
 if api_key:
@@ -137,14 +143,20 @@ if api_key:
     if btn_run_files and uploaded_files:
         for uploaded_file in uploaded_files:
             fname = uploaded_file.name
-            write_log(f"📦 Đang dịch file: {fname}")
+            write_log(f"📦 Đang xử lý file: {fname}")
             refresh_logs()
             try:
-                content = uploaded_file.read().decode("utf-8")
+                # SỬA LỖI Ở ĐÂY: Sử dụng utf-8-sig để tự động xóa ký tự BOM gây lỗi crash
+                content = uploaded_file.read().decode("utf-8-sig", errors="ignore")
                 final_srt = process_srt_strict(model, content, target_lang)
-                st.download_button(label=f"📥 Tải về: {fname}", data=final_srt, file_name=fname.replace(".srt", f"_{target_lang}.srt"), key=fname)
-                write_log(f"✅ Xong file {fname}")
+                
+                if "Lỗi xử lý file" not in final_srt:
+                    st.download_button(label=f"📥 Tải về: {fname}", data=final_srt, file_name=fname.replace(".srt", f"_{target_lang}.srt"), key=fname)
+                    write_log(f"✅ Dịch xong file {fname}")
+                else:
+                    write_log(f"❌ {final_srt}")
+                    
                 refresh_logs()
             except Exception as e:
-                write_log(f"❌ Lỗi: {str(e)}")
+                write_log(f"❌ Lỗi đọc file {fname}: {str(e)}")
                 refresh_logs()

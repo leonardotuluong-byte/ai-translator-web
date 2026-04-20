@@ -1,6 +1,5 @@
 import streamlit as st
 import google.generativeai as genai
-import srt
 import time
 import re
 
@@ -11,7 +10,6 @@ st.markdown("""
     <style>
     .stApp { background-color: #0e1117; }
     
-    /* Khung nhập liệu và khung kết quả: Nền TRẮNG, Chữ ĐEN */
     .stTextArea textarea { 
         font-family: 'Consolas', monospace; 
         font-size: 16px !important; 
@@ -38,12 +36,11 @@ LANGUAGES = [
 ]
 
 if "logs" not in st.session_state:
-    st.session_state.logs = ["--- Hệ thống sẵn sàng (Đã nâng cấp lệnh dịch cưỡng chế) ---"]
+    st.session_state.logs = ["--- Hệ thống sẵn sàng (Chế độ chống lỗi SRT Tối đa) ---"]
 
 def write_log(text):
     st.session_state.logs.append(text)
 
-# --- GIAO DIỆN CHÍNH ---
 st.markdown("<h2 style='text-align: center; color: #00e5ff;'>AI GLOBAL TRANSLATOR 2.5 FLASH - CHẾ ĐỘ DỊCH TRIỆT ĐỂ</h2>", unsafe_allow_html=True)
 
 col_k, col_m = st.columns([3, 1])
@@ -73,7 +70,60 @@ def refresh_logs():
 
 refresh_logs()
 
-# --- PROMPT "CƯỠNG CHẾ" CỰC MẠNH ---
+# =========================================================================
+# BỘ ĐỌC SRT SIÊU CHỐNG CHỊU (Bỏ qua mọi lỗi dòng trống, sai cấu trúc)
+# =========================================================================
+class SimpleSub:
+    def __init__(self, index, start_end, content):
+        self.index = index
+        self.start_end = start_end
+        self.content = content
+
+def parse_srt_resilient(content):
+    content = content.replace('\r\n', '\n').replace('\r', '\n').strip()
+    if content.startswith('\ufeff'):
+        content = content[1:]
+        
+    lines = content.split('\n')
+    subs = []
+    current_ts = None
+    current_text = []
+    
+    for line in lines:
+        line_str = line.strip()
+        if '-->' in line_str:
+            if current_ts:
+                # Dọn rác: Xóa các số thứ tự dính vào đuôi text của đoạn trước
+                while current_text and current_text[-1] == "":
+                    current_text.pop()
+                if current_text and current_text[-1].isdigit():
+                    current_text.pop()
+                
+                txt = '\n'.join(current_text).strip()
+                subs.append(SimpleSub(index=str(len(subs)+1), start_end=current_ts, content=txt))
+            
+            # Khởi tạo khối mới và SỬA LUÔN LỖI DẤU CHẤM TRONG THỜI GIAN
+            current_ts = line_str.replace('.', ',')
+            current_text = []
+        else:
+            if current_ts:
+                current_text.append(line_str)
+                
+    if current_ts:
+        while current_text and current_text[-1] == "":
+            current_text.pop()
+        txt = '\n'.join(current_text).strip()
+        subs.append(SimpleSub(index=str(len(subs)+1), start_end=current_ts, content=txt))
+        
+    return subs
+
+def compose_srt_resilient(subs):
+    res = []
+    for s in subs:
+        res.append(f"{s.index}\n{s.start_end}\n{s.content}\n")
+    return '\n'.join(res)
+# =========================================================================
+
 def get_ultimate_native_prompt(content, lang):
     return (
         f"Bạn là một dịch giả chuyên nghiệp xuất sắc nhất thế giới về bản địa hóa phim.\n"
@@ -86,21 +136,17 @@ def get_ultimate_native_prompt(content, lang):
         f"DỮ LIỆU CẦN DỊCH:\n{content}"
     )
 
-# --- HÀM XỬ LÝ CHÍNH ---
 def process_srt_strict(model, srt_content, lang):
     try:
-        # SỬA LỖI Ở ĐÂY: Dọn dẹp ký tự thừa và BOM tàng hình trước khi phân tích
-        srt_content = srt_content.strip()
-        if srt_content.startswith('\ufeff'):
-            srt_content = srt_content[1:]
+        subs = parse_srt_resilient(srt_content)
+        if not subs:
+            return "Lỗi: Không tìm thấy định dạng thời gian (-->) nào trong file. File có thể không phải SRT."
             
-        subs = list(srt.parse(srt_content))
         batch_size = 10 
         for i in range(0, len(subs), batch_size):
             batch = subs[i : i + batch_size]
             batch_text = "\n".join([f"L{j}: {s.content}" for j, s in enumerate(batch)])
             
-            # Gửi yêu cầu dịch
             response = model.generate_content(get_ultimate_native_prompt(batch_text, lang))
             
             if response.text:
@@ -114,11 +160,10 @@ def process_srt_strict(model, srt_content, lang):
                                 batch[idx].content = match.group(2).strip()
                         except: continue
             
-            time.sleep(0.5) # Tránh Rate Limit
-        return srt.compose(subs)
+            time.sleep(0.5)
+        return compose_srt_resilient(subs)
     except Exception as e:
-        # Trả về lỗi chi tiết để không làm sập cả ứng dụng
-        return f"Lỗi xử lý file định dạng SRT: {str(e)}\nHãy chắc chắn file của bạn là chuẩn SRT."
+        return f"Lỗi xử lý file định dạng SRT: {str(e)}"
 
 # --- THỰC THI ---
 if api_key:
@@ -146,11 +191,10 @@ if api_key:
             write_log(f"📦 Đang xử lý file: {fname}")
             refresh_logs()
             try:
-                # SỬA LỖI Ở ĐÂY: Sử dụng utf-8-sig để tự động xóa ký tự BOM gây lỗi crash
                 content = uploaded_file.read().decode("utf-8-sig", errors="ignore")
                 final_srt = process_srt_strict(model, content, target_lang)
                 
-                if "Lỗi xử lý file" not in final_srt:
+                if "Lỗi xử lý file" not in final_srt and "Lỗi: Không tìm thấy" not in final_srt:
                     st.download_button(label=f"📥 Tải về: {fname}", data=final_srt, file_name=fname.replace(".srt", f"_{target_lang}.srt"), key=fname)
                     write_log(f"✅ Dịch xong file {fname}")
                 else:

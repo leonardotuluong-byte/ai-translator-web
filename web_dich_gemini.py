@@ -2,8 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import time
 import re
-from google.generativeai.types
-import HarmCategory, HarmBlockThreshold
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
 # --- 1. CẤU HÌNH GIAO DIỆN ---
 st.set_page_config(page_title="AI Director Studio - Translator 2.5", layout="wide")
@@ -68,7 +67,7 @@ def refresh_logs():
 refresh_logs()
 
 # =========================================================================
-# BỘ GIẢI MÃ SRT "BẤT TỬ" (Tự viết, không dùng thư viện srt)
+# BỘ GIẢI MÃ SRT
 # =========================================================================
 class SubBlock:
     def __init__(self, idx, timestamp, content):
@@ -77,32 +76,22 @@ class SubBlock:
         self.content = content
 
 def custom_srt_parser(text):
-    # Xóa ký tự tàng hình BOM và chuẩn hóa xuống dòng
     text = text.replace('\ufeff', '').replace('\r\n', '\n').strip()
     blocks = []
-    # Regex tìm mốc thời gian -->
     raw_chunks = re.split(r'(\d+\n\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3})', text)
-    
     if len(raw_chunks) < 2: return []
-
     for i in range(1, len(raw_chunks), 2):
         ts_line = raw_chunks[i].strip()
         content = raw_chunks[i+1].strip() if i+1 < len(raw_chunks) else ""
-        
-        # Tách index và timestamp
         ts_parts = ts_line.split('\n')
         idx = ts_parts[0]
         ts = ts_parts[1] if len(ts_parts) > 1 else ts_parts[0]
-        
         blocks.append(SubBlock(idx, ts, content))
     return blocks
 
 def custom_srt_composer(blocks):
     return "\n".join([f"{b.idx}\n{b.timestamp}\n{b.content}\n" for b in blocks])
 
-# =========================================================================
-# PROMPT DỊCH THUẬT NATIVE
-# =========================================================================
 def get_native_prompt(batch_text, lang):
     return (
         f"Bạn là dịch giả AI xuất sắc nhất. Hãy dịch nội dung sau sang {lang}.\n"
@@ -115,44 +104,58 @@ def get_native_prompt(batch_text, lang):
 
 def process_translation(model, content, lang, is_srt=True):
     try:
-        # ... (giữ nguyên phần trên) ...
-        response = model.generate_content(get_native_prompt(batch_text, lang))
-        
-        # Kiểm tra xem có nội dung trả về không
-        if response.candidates and response.candidates[0].content.parts:
-            res_text = response.text
-            lines = res_text.strip().split('\n')
-            # ... (tiếp tục xử lý lines như cũ) ...
+        if is_srt:
+            subs = custom_srt_parser(content)
+            if not subs: return "Lỗi: File không đúng định dạng SRT."
+            batch_size = 15
+            for i in range(0, len(subs), batch_size):
+                batch = subs[i : i + batch_size]
+                batch_text = "\n".join([f"L{j}: {s.content}" for j, s in enumerate(batch)])
+                response = model.generate_content(get_native_prompt(batch_text, lang))
+                
+                # Kiểm tra an toàn trước khi lấy text
+                if response.candidates and response.candidates[0].content.parts:
+                    lines = response.text.strip().split('\n')
+                    for line in lines:
+                        m = re.search(r"L(\d+):\s*(.*)", line)
+                        if m:
+                            idx_in_batch = int(m.group(1))
+                            if idx_in_batch < len(batch):
+                                batch[idx_in_batch].content = m.group(2).strip()
+                else:
+                    write_log(f"⚠️ Dòng {i} bị chặn (Reason: {response.candidates[0].finish_reason})")
+                time.sleep(0.6)
+            return custom_srt_composer(subs)
         else:
-            write_log(f"⚠️ Một đoạn bị chặn do vi phạm chính sách (Reason: {response.candidates[0].finish_reason})")
-            return "Lỗi: Nội dung bị AI từ chối dịch do vi phạm tiêu chuẩn cộng đồng."
-            
+            response = model.generate_content(get_native_prompt(content, lang))
+            return re.sub(r"L\d+: ", "", response.text) if response.text else "Bị chặn nội dung."
     except Exception as e:
         return f"Lỗi thực thi: {str(e)}"
 
 # --- THỰC THI ---
 if api_key:
     genai.configure(api_key=api_key)
-    
-    # Cấu hình bỏ chặn tối đa
     safety_settings = {
         HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
         HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
         HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
         HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
     }
-    
-    model = genai.GenerativeModel(
-        model_name=model_id,
-        safety_settings=safety_settings
-    )
+    model = genai.GenerativeModel(model_name=model_id, safety_settings=safety_settings)
+
+    if btn_translate_text and input_text:
+        write_log(f"⏳ Đang dịch Review sang {target_lang}...")
+        refresh_logs()
+        res = process_translation(model, input_text, target_lang, is_srt=("-->" in input_text))
+        st.text_area("KẾT QUẢ:", value=res, height=350)
+        write_log("✅ Hoàn thành.")
+        refresh_logs()
 
     if btn_run_files and uploaded_files:
         for uploaded_file in uploaded_files:
             write_log(f"📦 Đang xử lý: {uploaded_file.name}")
             refresh_logs()
             try:
-                # Đọc file với utf-8-sig để tự xóa BOM
                 content = uploaded_file.read().decode("utf-8-sig", errors="ignore")
                 final_srt = process_translation(model, content, target_lang)
                 st.download_button(

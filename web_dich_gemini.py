@@ -2,6 +2,8 @@ import streamlit as st
 import google.generativeai as genai
 import time
 import re
+from google.generativeai.types
+import HarmCategory, HarmBlockThreshold
 
 # --- 1. CẤU HÌNH GIAO DIỆN ---
 st.set_page_config(page_title="AI Director Studio - Translator 2.5", layout="wide")
@@ -113,45 +115,37 @@ def get_native_prompt(batch_text, lang):
 
 def process_translation(model, content, lang, is_srt=True):
     try:
-        if is_srt:
-            subs = custom_srt_parser(content)
-            if not subs: return "Lỗi: File không đúng định dạng SRT hoặc bị hỏng."
-            
-            batch_size = 15
-            for i in range(0, len(subs), batch_size):
-                batch = subs[i : i + batch_size]
-                batch_text = "\n".join([f"L{j}: {s.content}" for j, s in enumerate(batch)])
-                
-                response = model.generate_content(get_native_prompt(batch_text, lang))
-                if response.text:
-                    lines = response.text.strip().split('\n')
-                    for line in lines:
-                        m = re.search(r"L(\d+):\s*(.*)", line)
-                        if m:
-                            idx = int(m.group(1))
-                            if idx < len(batch):
-                                batch[idx].content = m.group(2).strip()
-                time.sleep(0.6) # Tránh lỗi 429
-            return custom_srt_composer(subs)
+        # ... (giữ nguyên phần trên) ...
+        response = model.generate_content(get_native_prompt(batch_text, lang))
+        
+        # Kiểm tra xem có nội dung trả về không
+        if response.candidates and response.candidates[0].content.parts:
+            res_text = response.text
+            lines = res_text.strip().split('\n')
+            # ... (tiếp tục xử lý lines như cũ) ...
         else:
-            # Dịch văn bản thường
-            response = model.generate_content(get_native_prompt(content, lang))
-            return re.sub(r"L\d+: ", "", response.text)
+            write_log(f"⚠️ Một đoạn bị chặn do vi phạm chính sách (Reason: {response.candidates[0].finish_reason})")
+            return "Lỗi: Nội dung bị AI từ chối dịch do vi phạm tiêu chuẩn cộng đồng."
+            
     except Exception as e:
         return f"Lỗi thực thi: {str(e)}"
 
 # --- THỰC THI ---
 if api_key:
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(model_id)
-
-    if btn_translate_text and input_text:
-        write_log(f"⏳ Đang dịch Review sang {target_lang}...")
-        refresh_logs()
-        res = process_translation(model, input_text, target_lang, is_srt=("-->" in input_text))
-        st.text_area("KẾT QUẢ:", value=res, height=350)
-        write_log("✅ Hoàn thành.")
-        refresh_logs()
+    
+    # Cấu hình bỏ chặn tối đa
+    safety_settings = {
+        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+    }
+    
+    model = genai.GenerativeModel(
+        model_name=model_id,
+        safety_settings=safety_settings
+    )
 
     if btn_run_files and uploaded_files:
         for uploaded_file in uploaded_files:
